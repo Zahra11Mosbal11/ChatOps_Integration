@@ -101,3 +101,50 @@ async def check_all_devices_status() -> str:
             report_lines.append(f"⚠️ **{name}** (`{ip}`) - ERROR")
 
     return "\n".join(report_lines)
+
+async def trace_route(ip: str) -> str:
+    """
+    Asynchronously performs a traceroute to the specified IP or hostname.
+    Limits to 15 hops to avoid excessive wait times and text.
+    """
+    logger.info(f"Initiating traceroute to: {ip}")
+    
+    # 1. Input Validation: Check if it's a resolvable hostname/IP
+    try:
+        resolved_ip = socket.gethostbyname(ip)
+    except socket.gaierror:
+        logger.error(f"Invalid IP format or unresolvable hostname: {ip}")
+        return f"❌ Invalid IP format or unresolvable hostname: `{ip}`"
+
+    try:
+        # Run the system shell traceroute command asynchronously
+        # -m 15 limits the trace to 15 hops.
+        # -w 1 limits the wait time for a hop to 1 second.
+        # Note: 'traceroute' is the command on macOS/Linux.
+        process = await asyncio.create_subprocess_exec(
+            'traceroute', '-m', '15', '-w', '1', '-q', '1', resolved_ip,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        
+        # Wait for the command to complete, with a safety timeout (e.g., 30s)
+        try:
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=30.0)
+        except asyncio.TimeoutError:
+            process.kill()
+            return f"⚠️ Traceroute to `{ip}` timed out after 30 seconds."
+
+        if stdout:
+            output = stdout.decode('utf-8').strip()
+            # Since the output can get long, we encompass it in a markdown code block
+            return f"🗺 **Traceroute to `{ip}`**:\n```text\n{output}\n```"
+        
+        if stderr:
+            error_output = stderr.decode('utf-8').strip()
+            return f"⚠️ **Traceroute Error**: `{error_output}`"
+            
+    except Exception as e:
+        logger.error(f"Unexpected error when tracing {ip}: {e}")
+        return f"⚠️ An unexpected error occurred: `{e}`"
+        
+    return f"⚠️ Traceroute to `{ip}` failed to produce output."

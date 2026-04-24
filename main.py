@@ -10,7 +10,7 @@ from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
 # Import our modular network utilities
-from network_utils import check_device_status, check_all_devices_status
+from network_utils import check_device_status, check_all_devices_status, trace_route
 
 # Configure logging to help with debugging and monitoring
 logging.basicConfig(
@@ -32,6 +32,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "**Available Commands:**\n"
         "`/start` - Show this welcome message.\n"
         "`/status` - View the UP/DOWN status of all predefined core devices.\n"
+        "`/routes <IP>` - Trace the network path to a specific destination.\n"
         "`/check <IP>` - Perform an on-demand reachability check for an IP or hostname.\n\n"
         "*Example:* `/check 1.1.1.1`"
     )
@@ -90,6 +91,30 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # Send report
     await status_msg.edit_text(report, parse_mode='Markdown')
 
+async def routes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    Handles the /routes command.
+    Performs a traceroute to the specified IP.
+    """
+    user_id = update.effective_user.id
+    
+    if not context.args:
+        error_msg = "⚠️ Please provide an IP address or hostname to trace.\n*Usage:* `/routes <IP>`"
+        await update.message.reply_text(error_msg, parse_mode='Markdown')
+        logger.warning(f"User {user_id} issued /routes with no IP.")
+        return
+        
+    target_ip = context.args[0]
+    
+    status_msg = await update.message.reply_text(
+        f"⏳ Tracing route to `{target_ip}`. This may take up to 20-30 seconds...", 
+        parse_mode='Markdown'
+    )
+    
+    result = await trace_route(target_ip)
+    
+    await status_msg.edit_text(result, parse_mode='Markdown')
+
 # --- INITIALIZATION ---
 
 def main() -> None:
@@ -114,6 +139,7 @@ def main() -> None:
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("check", check))
     app.add_handler(CommandHandler("status", status))
+    app.add_handler(CommandHandler("routes", routes))
 
     # 4. Start polling for updates from Telegram
     logger.info("Bot is polling for updates...")
