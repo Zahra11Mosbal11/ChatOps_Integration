@@ -1,0 +1,63 @@
+"""
+network_utils.py
+Contains logic for checking the reachability status of network devices.
+Uses async/await execution for non-blocking operations.
+"""
+import asyncio
+import socket
+import logging
+from ping3 import ping
+
+# Set up logging for devsecops approach
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
+
+async def check_device_status(ip: str) -> str:
+    """
+    Asynchronously checks if a given IP or hostname is reachable via ICMP ping.
+    
+    Args:
+        ip (str): The IP address or hostname to check.
+        
+    Returns:
+        str: A formatted report message for the user.
+    """
+    logger.info(f"Initiating reachability check for: {ip}")
+    
+    # 1. Input Validation: Check if it's a resolvable hostname/IP
+    try:
+        # socket.gethostbyname validates and resolves the IP
+        resolved_ip = socket.gethostbyname(ip)
+    except socket.gaierror:
+        logger.error(f"Invalid IP format or unresolvable hostname: {ip}")
+        return f"❌ Invalid IP format or unresolvable hostname: `{ip}`"
+
+    # 2. Ping Check using thread pool
+    # Since ping3's ping() is blocking, we use run_in_executor
+    # to avoid freezing the Telegram bot's async event loop.
+    loop = asyncio.get_running_loop()
+    try:
+        # Timeout is 2 seconds
+        # run_in_executor runs the synchronous function in a separate thread
+        delay = await loop.run_in_executor(None, lambda: ping(resolved_ip, timeout=2))
+        
+        if delay is None:
+            logger.info(f"Host {ip} ({resolved_ip}) is unreachable.")
+            return f"❌ Host `{ip}` is **unreachable** (Request Timed Out)."
+        elif delay is False:
+            logger.info(f"Host {ip} ({resolved_ip}) returned an error on ping.")
+            return f"❌ Host `{ip}` is **unreachable** (Host Unknown/Error)."
+        else:
+            delay_ms = round(delay * 1000, 2)
+            logger.info(f"Host {ip} ({resolved_ip}) reachable. Time: {delay_ms} ms.")
+            return f"✅ Host `{ip}` is **reachable**.\n⏱ Response time: `{delay_ms} ms`"
+            
+    except PermissionError:
+        logger.error("Permission error: root privileges required for ping3.")
+        return "⚠️ **Configuration Error**: `ping3` requires administrator/root privileges to run on macOS/Linux natively."
+    except Exception as e:
+        logger.error(f"Unexpected error when pinging {ip}: {e}")
+        return f"⚠️ An unexpected error occurred: `{e}`"
