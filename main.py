@@ -10,7 +10,7 @@ from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
 # Import our modular network utilities
-from network_utils import check_device_status
+from network_utils import check_device_status, check_all_devices_status
 
 # Configure logging to help with debugging and monitoring
 logging.basicConfig(
@@ -31,6 +31,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "I can help you monitor the status of network devices in real-time.\n\n"
         "**Available Commands:**\n"
         "`/start` - Show this welcome message.\n"
+        "`/status` - View the UP/DOWN status of all predefined core devices.\n"
         "`/check <IP>` - Perform an on-demand reachability check for an IP or hostname.\n\n"
         "*Example:* `/check 1.1.1.1`"
     )
@@ -69,6 +70,25 @@ async def check(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # Update the status message with the final result
     await status_msg.edit_text(result, parse_mode='Markdown')
 
+async def status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    Handles the /status command.
+    Retrieves the status for all predefined devices and sends the report.
+    """
+    user_id = update.effective_user.id
+    logger.info(f"User {user_id} requested /status group check.")
+    
+    # Inform the user
+    status_msg = await update.message.reply_text(
+        "⏳ Checking the status of all predefined devices. Please wait...",
+        parse_mode='Markdown'
+    )
+    
+    # Fetch result
+    report = await check_all_devices_status()
+    
+    # Send report
+    await status_msg.edit_text(report, parse_mode='Markdown')
 
 # --- INITIALIZATION ---
 
@@ -93,6 +113,7 @@ def main() -> None:
     # 3. Register command handlers
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("check", check))
+    app.add_handler(CommandHandler("status", status))
 
     # 4. Start polling for updates from Telegram
     logger.info("Bot is polling for updates...")

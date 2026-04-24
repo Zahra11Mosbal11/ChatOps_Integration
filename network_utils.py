@@ -61,3 +61,43 @@ async def check_device_status(ip: str) -> str:
     except Exception as e:
         logger.error(f"Unexpected error when pinging {ip}: {e}")
         return f"⚠️ An unexpected error occurred: `{e}`"
+
+# Predefined devices dictionary for group monitoring
+PREDEFINED_DEVICES = {
+    "Core Router": "192.168.1.1",
+    "Distribution Switch": "192.168.1.2",
+    "DNS Server": "1.1.1.1",
+    "Web Server": "8.8.8.8"
+}
+
+async def check_all_devices_status() -> str:
+    """
+    Concurrently checks the status of all predefined network devices.
+    Returns a summarized report.
+    """
+    logger.info("Initiating reachability check for all predefined devices.")
+    loop = asyncio.get_running_loop()
+    
+    report_lines = ["📊 **Predefined Network Devices Status:**\n"]
+    
+    # Check each device sequentially to avoid potential rate limit/socket issues
+    # Note: Can be changed to asyncio.gather(...) for true parallel concurrency if list grows large
+    for name, ip in PREDEFINED_DEVICES.items():
+        try:
+            resolved_ip = socket.gethostbyname(ip)
+            # Use shorter timeout (1 sec) for bulk checks to keep response time fast
+            delay = await loop.run_in_executor(None, lambda: ping(resolved_ip, timeout=1))
+            
+            if delay is None or delay is False:
+                report_lines.append(f"🔴 **{name}** (`{ip}`) - DOWN")
+            else:
+                delay_ms = round(delay * 1000, 2)
+                report_lines.append(f"🟢 **{name}** (`{ip}`) - UP ({delay_ms} ms)")
+        except socket.gaierror:
+            report_lines.append(f"⚠️ **{name}** (`{ip}`) - INVALID IP")
+        except PermissionError:
+            report_lines.append(f"⚠️ **{name}** (`{ip}`) - PERMISSION ERROR")
+        except Exception:
+            report_lines.append(f"⚠️ **{name}** (`{ip}`) - ERROR")
+
+    return "\n".join(report_lines)
