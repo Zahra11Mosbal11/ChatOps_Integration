@@ -148,3 +148,48 @@ async def trace_route(ip: str) -> str:
         return f"⚠️ An unexpected error occurred: `{e}`"
         
     return f"⚠️ Traceroute to `{ip}` failed to produce output."
+
+async def evaluate_device_health(name: str, ip: str):
+    """
+    Evaluates the health of a single device against thresholds.
+    Triggers a traceroute if the device is DOWN or has HIGH LATENCY (> 150ms).
+    
+    Returns:
+        str: An formatted alert string if anomaly detected.
+        None: If device is completely healthy.
+    """
+    logger.info(f"Evaluating health for {name} ({ip})")
+    loop = asyncio.get_running_loop()
+    
+    try:
+        # Resolve IP
+        resolved_ip = socket.gethostbyname(ip)
+        # Timeout is set to 2 sec. A failure means device is down or path is fully blocked.
+        delay = await loop.run_in_executor(None, lambda: ping(resolved_ip, timeout=2))
+        
+        if delay is None or delay is False:
+            logger.warning(f"Device {name} is DOWN. Initiating trace...")
+            trace_result = await trace_route(resolved_ip)
+            return (f"🚨 **ALERT: DEVICE DOWN / ROUTE FAILURE** 🚨\n"
+                    f"**Device:** {name} (`{ip}`)\n"
+                    f"**Reason:** Ping failed or request timed out.\n\n"
+                    f"**Route Diagnostics:**\n{trace_result}")
+        
+        delay_ms = round(delay * 1000, 2)
+        if delay_ms > 150.0:  # 150ms High Latency Threshold
+            logger.warning(f"Device {name} has HIGH LATENCY. Initiating trace...")
+            trace_result = await trace_route(resolved_ip)
+            return (f"⚠️ **ALERT: HIGH LATENCY** ⚠️\n"
+                    f"**Device:** {name} (`{ip}`)\n"
+                    f"**Response Time:** {delay_ms} ms (Threshold: 150ms)\n\n"
+                    f"**Route Diagnostics:**\n{trace_result}")
+            
+    except socket.gaierror:
+        return f"⚠️ **ALERT: DNS ERROR** ⚠️\n**Device:** {name} (`{ip}`) cannot be resolved."
+    except PermissionError:
+        return None # Avoid spamming the alert group if this is a platform permission issue
+    except Exception as e:
+        logger.error(f"Error evaluating health for {name}: {e}")
+        return f"⚠️ **ALERT: HEALTH CHECK ERROR** ⚠️\n**Device:** {name} (`{ip}`)\n**Error:** `{e}`"
+        
+    return None # Device is healthy

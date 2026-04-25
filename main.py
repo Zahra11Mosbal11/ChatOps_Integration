@@ -10,7 +10,7 @@ from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
 # Import our modular network utilities
-from network_utils import check_device_status, check_all_devices_status, trace_route
+from network_utils import check_device_status, check_all_devices_status, trace_route, evaluate_device_health, PREDEFINED_DEVICES
 
 # Configure logging to help with debugging and monitoring
 logging.basicConfig(
@@ -115,6 +115,30 @@ async def routes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     
     await status_msg.edit_text(result, parse_mode='Markdown')
 
+async def monitor_network_job(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    Scheduled job that iterates through predefined devices, running a health check.
+    If an anomaly is detected (down, high latency, route failure) it sends an alert.
+    """
+    logger.info("Executing periodic network monitor job...")
+    
+    alert_chat_id = os.getenv("ALERT_CHAT_ID")
+    if not alert_chat_id:
+        logger.warning("Automated job skipped: ALERT_CHAT_ID is not configured in .env.")
+        return
+        
+    for name, ip in PREDEFINED_DEVICES.items():
+        alert_msg = await evaluate_device_health(name, ip)
+        
+        # If an alert message is generated, device is not healthy
+        if alert_msg:
+            # Send message to designated chat
+            await context.bot.send_message(
+                chat_id=alert_chat_id, 
+                text=alert_msg, 
+                parse_mode='Markdown'
+            )
+
 # --- INITIALIZATION ---
 
 def main() -> None:
@@ -140,6 +164,14 @@ def main() -> None:
     app.add_handler(CommandHandler("check", check))
     app.add_handler(CommandHandler("status", status))
     app.add_handler(CommandHandler("routes", routes))
+    
+    # Register background job
+    # interval is in seconds (e.g., 60 seconds)
+    # first=10 means it will run the first check 10 seconds after bot starts.
+    if app.job_queue:
+        app.job_queue.run_repeating(monitor_network_job, interval=60, first=10)
+    else:
+        logger.error("Job Queue is not initialized! Make sure you are using python-telegram-bot[job-queue]")
 
     # 4. Start polling for updates from Telegram
     logger.info("Bot is polling for updates...")
