@@ -1,14 +1,12 @@
-"""
-network_utils.py
-Contains logic for checking the reachability status of network devices.
-Uses async/await execution for non-blocking operations.
-"""
+#network_utils.py Contains logic for checking the reachability status of network devices.
+
+# import required libraries
 import asyncio
 import socket
 import logging
 from ping3 import ping
 
-# Set up logging for devsecops approach
+# logging for devsecops approach
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
@@ -25,12 +23,12 @@ async def check_device_status(ip: str) -> str:
     Returns:
         str: A formatted report message for the user.
     """
-    logger.info(f"Initiating reachability check for: {ip}")
+    loop = asyncio.get_running_loop()
     
     # 1. Input Validation: Check if it's a resolvable hostname/IP
     try:
         # socket.gethostbyname validates and resolves the IP
-        resolved_ip = socket.gethostbyname(ip)
+        resolved_ip = await loop.run_in_executor(None, socket.gethostbyname, ip)
     except socket.gaierror:
         logger.error(f"Invalid IP format or unresolvable hostname: {ip}")
         return f"❌ Invalid IP format or unresolvable hostname: `{ip}`"
@@ -38,7 +36,6 @@ async def check_device_status(ip: str) -> str:
     # 2. Ping Check using thread pool
     # Since ping3's ping() is blocking, we use run_in_executor
     # to avoid freezing the Telegram bot's async event loop.
-    loop = asyncio.get_running_loop()
     try:
         # Timeout is 2 seconds
         # run_in_executor runs the synchronous function in a separate thread
@@ -65,9 +62,7 @@ async def check_device_status(ip: str) -> str:
 # Predefined devices dictionary for group monitoring
 PREDEFINED_DEVICES = {
     "Core Router": "192.168.1.1",
-    "Distribution Switch": "192.168.1.2",
-    "DNS Server": "1.1.1.1",
-    "Web Server": "8.8.8.8"
+    "User Phone": "192.168.1.4"
 }
 
 async def check_all_devices_status() -> str:
@@ -84,7 +79,7 @@ async def check_all_devices_status() -> str:
     # Note: Can be changed to asyncio.gather(...) for true parallel concurrency if list grows large
     for name, ip in PREDEFINED_DEVICES.items():
         try:
-            resolved_ip = socket.gethostbyname(ip)
+            resolved_ip = await loop.run_in_executor(None, socket.gethostbyname, ip)
             # Use shorter timeout (1 sec) for bulk checks to keep response time fast
             delay = await loop.run_in_executor(None, lambda: ping(resolved_ip, timeout=1))
             
@@ -107,11 +102,11 @@ async def trace_route(ip: str) -> str:
     Asynchronously performs a traceroute to the specified IP or hostname.
     Limits to 15 hops to avoid excessive wait times and text.
     """
-    logger.info(f"Initiating traceroute to: {ip}")
+    loop = asyncio.get_running_loop()
     
     # 1. Input Validation: Check if it's a resolvable hostname/IP
     try:
-        resolved_ip = socket.gethostbyname(ip)
+        resolved_ip = await loop.run_in_executor(None, socket.gethostbyname, ip)
     except socket.gaierror:
         logger.error(f"Invalid IP format or unresolvable hostname: {ip}")
         return f"❌ Invalid IP format or unresolvable hostname: `{ip}`"
@@ -163,7 +158,7 @@ async def evaluate_device_health(name: str, ip: str):
     
     try:
         # Resolve IP
-        resolved_ip = socket.gethostbyname(ip)
+        resolved_ip = await loop.run_in_executor(None, socket.gethostbyname, ip)
         # Timeout is set to 2 sec. A failure means device is down or path is fully blocked.
         delay = await loop.run_in_executor(None, lambda: ping(resolved_ip, timeout=2))
         
