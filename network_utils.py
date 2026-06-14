@@ -1,190 +1,142 @@
-#network_utils.py Contains logic for checking the reachability status of network devices.
-
-# import required libraries
+import logging
 import asyncio
 import socket
-import logging
+
 from ping3 import ping
 
-# logging for devsecops approach
+#for configurtaion
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
-async def check_device_status(ip: str) -> str:
-    """
-    Asynchronously checks if a given IP or hostname is reachable via ICMP ping.
-    
-    Args:
-        ip (str): The IP address or hostname to check.
-        
-    Returns:
-        str: A formatted report message for the user.
-    """
-    loop = asyncio.get_running_loop()
-    
-    # 1. Input Validation: Check if it's a resolvable hostname/IP
+#checks if devices are reachable
+async def isDeviceOnline(host_ip: str) -> str:
+    eventLoop = asyncio.get_running_loop()
     try:
-        # socket.gethostbyname validates and resolves the IP
-        resolved_ip = await loop.run_in_executor(None, socket.gethostbyname, ip)
+        target_IP = await eventLoop.run_in_executor(None, socket.gethostbyname, host_ip)
     except socket.gaierror:
-        logger.error(f"Invalid IP format or unresolvable hostname: {ip}")
-        return f"❌ Invalid IP format or unresolvable hostname: `{ip}`"
-
-    # 2. Ping Check using thread pool
-    # Since ping3's ping() is blocking, we use run_in_executor
-    # to avoid freezing the Telegram bot's async event loop.
+        logger.error(f"Invalid IP format or unresolvable hostname: {host_ip}")
+        return f"Invalid IP format or unresolvable hostname: `{host_ip}`"
     try:
-        # Timeout is 2 seconds
-        # run_in_executor runs the synchronous function in a separate thread
-        delay = await loop.run_in_executor(None, lambda: ping(resolved_ip, timeout=2))
-        
+        delay = await eventLoop.run_in_executor(None, lambda: ping(target_IP, timeout=2))
         if delay is None:
-            logger.info(f"Host {ip} ({resolved_ip}) is unreachable.")
-            return f"❌ Host `{ip}` is **unreachable** (Request Timed Out)."
+            logger.info(f"Host {host_ip} ({target_IP}) is unreachable.")
+            return f" Host `{host_ip}` is **unreachable** (Request Timed Out)."
         elif delay is False:
-            logger.info(f"Host {ip} ({resolved_ip}) returned an error on ping.")
-            return f"❌ Host `{ip}` is **unreachable** (Host Unknown/Error)."
+            logger.info(f"Host {host_ip} ({target_IP}) returned an error on ping.")
+            return f" Host `{host_ip}` is **unreachable** (Host Unknown/Error)."
         else:
-            delay_ms = round(delay * 1000, 2)
-            logger.info(f"Host {ip} ({resolved_ip}) reachable. Time: {delay_ms} ms.")
-            return f"✅ Host `{ip}` is **reachable**.\n⏱ Response time: `{delay_ms} ms`"
+            responseTime = round(delay * 1000, 2)
+            logger.info(f"Host {host_ip} ({target_IP}) reachable. Time: {responseTime} ms.")
+            return f"✅ Host `{host_ip}` is **reachable**.\n⏱ Response time: `{responseTime} ms`"
             
     except PermissionError:
         logger.error("Permission error: root privileges required for ping3.")
         return "⚠️ **Configuration Error**: `ping3` requires administrator/root privileges to run on macOS/Linux natively."
     except Exception as e:
-        logger.error(f"Unexpected error when pinging {ip}: {e}")
+        logger.error(f"Unexpected error when pinging {host_ip}: {e}")
         return f"⚠️ An unexpected error occurred: `{e}`"
 
-# Predefined devices dictionary for group monitoring
-PREDEFINED_DEVICES = {
+# Predefined devices
+DEVICE_LIST = {
     "Core Router": "192.168.1.1",
     "User Phone": "192.168.1.4"
 }
 
-async def check_all_devices_status() -> str:
-    """
-    Concurrently checks the status of all predefined network devices.
-    Returns a summarized report.
-    """
+#check all devices status 
+async def getAllStatues() -> str:
     logger.info("Initiating reachability check for all predefined devices.")
-    loop = asyncio.get_running_loop()
+    eventLoop = asyncio.get_running_loop()
     
-    report_lines = ["📊 **Predefined Network Devices Status:**\n"]
+    results = [" **Network Devices Status:**\n"]
     
-    # Check each device sequentially to avoid potential rate limit/socket issues
-    # Note: Can be changed to asyncio.gather(...) for true parallel concurrency if list grows large
-    for name, ip in PREDEFINED_DEVICES.items():
+    for name, host_ip in DEVICE_LIST.items():
         try:
-            resolved_ip = await loop.run_in_executor(None, socket.gethostbyname, ip)
-            # Use shorter timeout (1 sec) for bulk checks to keep response time fast
-            delay = await loop.run_in_executor(None, lambda: ping(resolved_ip, timeout=1))
-            
+            target_IP = await eventLoop.run_in_executor(None, socket.gethostbyname, host_ip)
+            delay = await eventLoop.run_in_executor(None, lambda: ping(target_IP, timeout=1))
             if delay is None or delay is False:
-                report_lines.append(f"🔴 **{name}** (`{ip}`) - DOWN")
+                results.append(f" **{name}** (`{host_ip}`) - DOWN")
             else:
-                delay_ms = round(delay * 1000, 2)
-                report_lines.append(f"🟢 **{name}** (`{ip}`) - UP ({delay_ms} ms)")
+                responseTime = round(delay * 1000, 2)
+                results.append(f"✅ **{name}** (`{host_ip}`) - UP ({responseTime} ms)")
         except socket.gaierror:
-            report_lines.append(f"⚠️ **{name}** (`{ip}`) - INVALID IP")
+            results.append(f"⚠️ **{name}** (`{host_ip}`) - INVALID IP")
         except PermissionError:
-            report_lines.append(f"⚠️ **{name}** (`{ip}`) - PERMISSION ERROR")
+            results.append(f"⚠️ **{name}** (`{host_ip}`) - PERMISSION ERROR")
         except Exception:
-            report_lines.append(f"⚠️ **{name}** (`{ip}`) - ERROR")
+            results.append(f"⚠️ **{name}** (`{host_ip}`) - ERROR")
 
-    return "\n".join(report_lines)
+    return "\n".join(results)
 
-async def trace_route(ip: str) -> str:
-    """
-    Asynchronously performs a traceroute to the specified IP or hostname.
-    Limits to 15 hops to avoid excessive wait times and text.
-    """
-    loop = asyncio.get_running_loop()
-    
-    # 1. Input Validation: Check if it's a resolvable hostname/IP
+# for traceroute to the specified IP
+async def findPath(host_ip: str) -> str:
+    eventLoop = asyncio.get_running_loop()
     try:
-        resolved_ip = await loop.run_in_executor(None, socket.gethostbyname, ip)
+        target_IP = await eventLoop.run_in_executor(None, socket.gethostbyname, host_ip)
     except socket.gaierror:
-        logger.error(f"Invalid IP format or unresolvable hostname: {ip}")
-        return f"❌ Invalid IP format or unresolvable hostname: `{ip}`"
+        logger.error(f"Invalid IP format or unresolvable hostname: {host_ip}")
+        return f" Invalid IP format or unresolvable hostname: `{host_ip}`"
 
     try:
-        # Run the system shell traceroute command asynchronously
-        # -m 15 limits the trace to 15 hops.
-        # -w 1 limits the wait time for a hop to 1 second.
-        # Note: 'traceroute' is the command on macOS/Linux.
         process = await asyncio.create_subprocess_exec(
-            'traceroute', '-m', '15', '-w', '1', '-q', '1', resolved_ip,
+            'traceroute', '-m', '15', '-w', '1', '-q', '1', target_IP,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE
         )
-        
-        # Wait for the command to complete, with a safety timeout (e.g., 30s)
         try:
             stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=30.0)
         except asyncio.TimeoutError:
             process.kill()
-            return f"⚠️ Traceroute to `{ip}` timed out after 30 seconds."
+            return f"⚠️ Traceroute to `{host_ip}` timed out after 30 seconds."
 
         if stdout:
             output = stdout.decode('utf-8').strip()
-            # Since the output can get long, we encompass it in a markdown code block
-            return f"🗺 **Traceroute to `{ip}`**:\n```text\n{output}\n```"
+            return f" **Traceroute to `{host_ip}`**:\n```text\n{output}\n```"
         
         if stderr:
             error_output = stderr.decode('utf-8').strip()
             return f"⚠️ **Traceroute Error**: `{error_output}`"
             
     except Exception as e:
-        logger.error(f"Unexpected error when tracing {ip}: {e}")
+        logger.error(f"Unexpected error when tracing {host_ip}: {e}")
         return f"⚠️ An unexpected error occurred: `{e}`"
         
-    return f"⚠️ Traceroute to `{ip}` failed to produce output."
+    return f"⚠️ Traceroute to `{host_ip}` failed to produce output."
 
-async def evaluate_device_health(name: str, ip: str):
-    """
-    Evaluates the health of a single device against thresholds.
-    Triggers a traceroute if the device is DOWN or has HIGH LATENCY (> 150ms).
-    
-    Returns:
-        str: An formatted alert string if anomaly detected.
-        None: If device is completely healthy.
-    """
-    logger.info(f"Evaluating health for {name} ({ip})")
-    loop = asyncio.get_running_loop()
+#traceroute if the device is down or has high latency every 150ms
+async def deviceHealth(name: str, host_ip: str):
+    logger.info(f"Evaluating health for {name} ({host_ip})")
+    eventLoop = asyncio.get_running_loop()
     
     try:
-        # Resolve IP
-        resolved_ip = await loop.run_in_executor(None, socket.gethostbyname, ip)
-        # Timeout is set to 2 sec. A failure means device is down or path is fully blocked.
-        delay = await loop.run_in_executor(None, lambda: ping(resolved_ip, timeout=2))
+        target_IP = await eventLoop.run_in_executor(None, socket.gethostbyname, host_ip)
+        delay = await eventLoop.run_in_executor(None, lambda: ping(target_IP, timeout=2))
         
         if delay is None or delay is False:
             logger.warning(f"Device {name} is DOWN. Initiating trace...")
-            trace_result = await trace_route(resolved_ip)
+            trace_result = await findPath(target_IP)
             return (f"🚨 **ALERT: DEVICE DOWN / ROUTE FAILURE** 🚨\n"
-                    f"**Device:** {name} (`{ip}`)\n"
+                    f"**Device:** {name} (`{host_ip}`)\n"
                     f"**Reason:** Ping failed or request timed out.\n\n"
                     f"**Route Diagnostics:**\n{trace_result}")
         
-        delay_ms = round(delay * 1000, 2)
-        if delay_ms > 150.0:  # 150ms High Latency Threshold
+        responseTime = round(delay * 1000, 2)
+        if responseTime > 150.0:
             logger.warning(f"Device {name} has HIGH LATENCY. Initiating trace...")
-            trace_result = await trace_route(resolved_ip)
+            trace_result = await findPath(target_IP)
             return (f"⚠️ **ALERT: HIGH LATENCY** ⚠️\n"
-                    f"**Device:** {name} (`{ip}`)\n"
-                    f"**Response Time:** {delay_ms} ms (Threshold: 150ms)\n\n"
+                    f"**Device:** {name} (`{host_ip}`)\n"
+                    f"**Response Time:** {responseTime} ms\n"
                     f"**Route Diagnostics:**\n{trace_result}")
             
     except socket.gaierror:
-        return f"⚠️ **ALERT: DNS ERROR** ⚠️\n**Device:** {name} (`{ip}`) cannot be resolved."
+        return f"⚠️ **ALERT: DNS ERROR** ⚠️\n**Device:** {name} (`{host_ip}`) cannot be resolved."
     except PermissionError:
-        return None # Avoid spamming the alert group if this is a platform permission issue
+        return None 
     except Exception as e:
         logger.error(f"Error evaluating health for {name}: {e}")
-        return f"⚠️ **ALERT: HEALTH CHECK ERROR** ⚠️\n**Device:** {name} (`{ip}`)\n**Error:** `{e}`"
+        return f"⚠️ **ALERT: HEALTH CHECK ERROR** ⚠️\n**Device:** {name} (`{host_ip}`)\n**Error:** `{e}`"
         
-    return None # Device is healthy
+    return None 

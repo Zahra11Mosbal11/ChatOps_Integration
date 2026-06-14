@@ -1,5 +1,5 @@
 
-# 🤖 ChatOps Network Monitor Telegram Bot
+# ChatOps Network Monitor Telegram Bot
 
 A lightweight, asynchronous Telegram bot for real-time network monitoring and diagnostics. Built for DevSecOps workflows, it lets you check device reachability, run traceroutes, and receive instant downtime or high-latency alerts directly in chat.
 
@@ -24,7 +24,7 @@ A lightweight, asynchronous Telegram bot for real-time network monitoring and di
 
 ---
 
-## 🚀 Quick Start
+##  Quick Start
 
 ### 1. Installation
 
@@ -48,7 +48,7 @@ ALERT_CHAT_ID=your_alert_telegram_chat_id_here
 
 ```
 
-> 💡 *Get a bot token by messaging [@BotFather](https://t.me/BotFather) on Telegram.*
+> *Get a bot token by messaging [@BotFather](https://t.me/BotFather) on Telegram.*
 
 ### 3. Run the Bot
 
@@ -61,7 +61,7 @@ python main.py
 
 ---
 
-## 🤖 Bot Commands
+##  Bot Commands
 
 * `/start` - Welcome message and command guide.
 * `/status` - Health check summary of all core infrastructure.
@@ -70,7 +70,7 @@ python main.py
 
 ---
 
-## 📂 Project Structure
+##  Project Structure
 
 ```text
 ChatOps_Integration/

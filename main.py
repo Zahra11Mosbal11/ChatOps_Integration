@@ -1,6 +1,3 @@
-# main.py for the ChatOps Network Monitor bot.
-
-# Import libraries
 import os
 import logging
 from dotenv import load_dotenv
@@ -8,7 +5,7 @@ from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
 # Import network_utils.py 
-from network_utils import check_device_status, check_all_devices_status, trace_route, evaluate_device_health, PREDEFINED_DEVICES
+from network_utils import isDeviceOnline, getAllStatues, findPath, deviceHealth, DEVICE_LIST
 
 # Configure logging
 logging.basicConfig(
@@ -19,11 +16,10 @@ logger = logging.getLogger(__name__)
 
 # command handlers
 
+# the /start command to send an introductory message to the user explaining how to use the bot.
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    # the /start command to send an introductory message to the user explaining how to use the bot.
-    
     intro_message = (
-        "🤖 **Welcome to the ChatOps Network Monitor!**\n\n"
+        " **Welcome to the ChatOps Network Monitor!**\n\n"
         "I can help you monitor the status of network devices in real-time.\n\n"
         "**Available Commands:**\n"
         "`/start` - Show this welcome message.\n"
@@ -32,51 +28,48 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "`/check <IP>` - Perform an on-demand reachability check for an IP or hostname.\n\n"
         "*Example:* `/check 1.1.1.1`"
     )
-    # Send message with Markdown to make it looks better
     await update.message.reply_text(intro_message, parse_mode='Markdown')
     logger.info(f"User {update.effective_user.id} requested /start")
 
 
+# the /check command to check the status of a specific device.
 async def check(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    # the /check command to check the status of a specific device.
     
     user_id = update.effective_user.id
     
-    # check if the user provided an IP address or hostname
     if not context.args:
         error_msg = "⚠️ Please provide an IP address or hostname to check.\n*Usage:* `/check <IP>`"
         await update.message.reply_text(error_msg, parse_mode='Markdown')
         logger.warning(f"User {user_id} issued /check with no IP.")
         return
     
-    target_ip = context.args[0]
+    target_host_ip = context.args[0]
     
-    # Inform the user that the request is being processed
     status_msg = await update.message.reply_text(
-        f"⏳ Checking status for `{target_ip}`...", 
+        f" Checking status for `{target_host_ip}`...", 
         parse_mode='Markdown'
     )
-    # check the device status 
-    result = await check_device_status(target_ip)
-    # Update the status message with the final result
+    
+    result = await isDeviceOnline(target_host_ip)
     await status_msg.edit_text(result, parse_mode='Markdown')
 
+
+# the /status command to check the status of all predefined devices and sends the report.
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    # the /status command to check the status of all predefined devices and sends the report.
     
     user_id = update.effective_user.id
     logger.info(f"User {user_id} requested /status group check.")
     
     status_msg = await update.message.reply_text(
-        "⏳ Checking the status of all predefined devices. Please wait...",
+        "Checking the status of all predefined devices. Please wait...",
         parse_mode='Markdown'
     )
     
-    report = await check_all_devices_status()
+    report = await getAllStatues()
     await status_msg.edit_text(report, parse_mode='Markdown')
 
+# the /routes command to trace the network path to a specific device.
 async def routes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    # the /routes command to trace the network path to a specific device.
     
     user_id = update.effective_user.id
     
@@ -86,22 +79,18 @@ async def routes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         logger.warning(f"User {user_id} issued /routes with no IP.")
         return
         
-    target_ip = context.args[0]
+    target_host_ip = context.args[0]
     
     status_msg = await update.message.reply_text(
-        f"⏳ Tracing route to `{target_ip}`. This may take up to 20-30 seconds...", 
+        f" Tracing route to `{target_host_ip}`. This may take up to 20-30 seconds...", 
         parse_mode='Markdown'
     )
     
-    result = await trace_route(target_ip)
+    result = await findPath(target_host_ip)
     
     await status_msg.edit_text(result, parse_mode='Markdown')
 
 async def monitor_network_job(context: ContextTypes.DEFAULT_TYPE) -> None:
-    """
-    Scheduled job that iterates through predefined devices, running a health check.
-    If an anomaly is detected (down, high latency, route failure) it sends an alert.
-    """
     logger.info("Executing periodic network monitor job...")
     
     alert_chat_id = os.getenv("ALERT_CHAT_ID")
@@ -109,12 +98,10 @@ async def monitor_network_job(context: ContextTypes.DEFAULT_TYPE) -> None:
         logger.warning("Automated job skipped: ALERT_CHAT_ID is not configured in .env.")
         return
         
-    for name, ip in PREDEFINED_DEVICES.items():
-        alert_msg = await evaluate_device_health(name, ip)
+    for name, host_ip in DEVICE_LIST.items():
+        alert_msg = await deviceHealth(name, host_ip)
         
-        # If an alert message is generated, device is not healthy
         if alert_msg:
-            # Send message to designated chat
             await context.bot.send_message(
                 chat_id=alert_chat_id, 
                 text=alert_msg, 
@@ -124,10 +111,7 @@ async def monitor_network_job(context: ContextTypes.DEFAULT_TYPE) -> None:
 # initialization
 
 def main() -> None:
-    # Main function to initialize and run the Telegram bot.
-    # Implementing DevSecOps secrets securely via python-dotenv.
-    
-    # Load environment variables securely from .env file
+   
     load_dotenv()
     
     bot_token = os.getenv("TELEGRAM_TOKEN")
@@ -136,24 +120,18 @@ def main() -> None:
         return
 
     logger.info("Initializing Telegram bot application...")
-    # Build the application 
     app = ApplicationBuilder().token(bot_token).build()
 
-    # Register command handlers
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("check", check))
     app.add_handler(CommandHandler("status", status))
     app.add_handler(CommandHandler("routes", routes))
     
-    # Register background job
-    # interval is in seconds (e.g., 60 seconds)
-    # first=10 it will run the first check 10 seconds after bot starts.
     if app.job_queue:
         app.job_queue.run_repeating(monitor_network_job, interval=60, first=10)
     else:
         logger.error("Job Queue is not initialized! Make sure you are using python-telegram-bot[job-queue]")
 
-    # Start the bot.
     logger.info("Bot is polling for updates...")
     app.run_polling()
 
