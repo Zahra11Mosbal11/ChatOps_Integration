@@ -3,9 +3,8 @@
 
 A lightweight, asynchronous Telegram bot for real-time network monitoring and diagnostics. Built for DevSecOps workflows, it lets you check device reachability, run traceroutes, and receive instant downtime or high-latency alerts directly in chat.
 
-<img width="1027" height="672" alt="Screenshot 2026-04-27 at 08 02 25" src="https://github.com/user-attachments/assets/2edf9ab6-e07b-40cd-bffd-145fc6458783" />
-<img width="1027" height="672" alt="Screenshot 2026-04-27 at 08 03 13" src="https://github.com/user-attachments/assets/f3cf3db1-c169-4fac-8f1a-bceae80a1299" />
-
+<img width="2361" height="1555" alt="Screenshot 2026-06-14 at 09 41 44" src="https://github.com/user-attachments/assets/eaa92266-7fe1-4a91-8517-62592cb0e76c" />
+<img width="2361" height="1560" alt="Screenshot 2026-06-14 at 09 44 56" src="https://github.com/user-attachments/assets/2e232646-a0f7-429a-91a3-5eab36b46f75" />
 
 ---
 
